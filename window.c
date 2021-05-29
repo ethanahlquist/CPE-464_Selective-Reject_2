@@ -1,6 +1,6 @@
 #include "window.h"
 #include "safeUtil.h"
-#include "pdu.h"
+#include "srej.h"
 
 struct win {
     char name[MAX_NAME];
@@ -109,79 +109,35 @@ uint8_t * win_get(uint32_t seq_num){
     return win.buffers[index];
 }
 
-int win_dist(uint32_t i1, uint32_t i2){
-
-    i1 = win_index(i1);
-    i2 = win_index(i2);
-    if(i1 <= i2){
-        return i2 - i1;
-    } else {
-        uint32_t dist_to_end = win.size - win_index(i1);
-        uint32_t dist_start_to_i2 = win_index(i2);
-        return dist_to_end + dist_start_to_i2;
-    }
-}
-
 void win_set_lower(uint32_t val){
     win.lower = val;
     win.upper = val + win.size;
+}
+
+uint32_t win_getLower(){
+    return win.lower;
 }
 
 int win_isFull(){
     return win.current +1 >= win.upper;
 }
 
-/* Returns the difference between the starting value of current and end value
-   0 - window full?
-   1 - Normal function (NO SREJ)
-   N - Send multiple SREJ
-*/
-int win_skipping_enQueue(uint8_t * pdu, uint16_t pduSize){
-
-    uint32_t seq_num = getSeqPDU(pdu);
-    uint32_t prev_current = win.current;
-
-    if(win_isFull() || seq_num >= win.upper){
-        printf("Full Queue (Enqueue)\n");
-        return 0;
-    }
-
-    win.current = seq_num;
-
-    /* Empty queue */
-    if(win_isEmpty()){
-        win_set_lower(win.current);
-    }
-
-    if(win_dist(win.current, seq_num) > win_dist(win.current, win.upper)){
-        printf("This is not allowed\n");
-        return -1;
-    }
-
-    memcpy(win.buffers[win_index(win.current)], pdu, pduSize);
-
-    uint32_t num_moves = prev_current - win.current;
-    if(num_moves == 0){
-        printf("This should not happen\n");
-    }
-
-    win.pdu_sizes[win_index(win.current)] = pduSize;
-
-    return num_moves;
+int win_cellEmpty(int seq_num){
+    int index = win_index(seq_num);
+    return win.pdu_sizes[index] == 0;
 }
 
-void win_add(uint8_t *pdu, uint16_t pduSize){
-
-    win_skipping_enQueue(pdu, pduSize);
+int win_lowest_cell_isFull(){
+    int index = win_index(win.lower);
+    return win.pdu_sizes[index] != 0;
 }
 
-int win_oneElement(){
-    return win.lower == win.current;
+int win_seqInFrame(int seq_num){
+    return (seq_num >= win.lower) && (seq_num < win.upper);
 }
 
 int win_isEmpty(){
     return win.current == win.lower;
-    return win.current == -1;
 }
 
 void win_RR(uint32_t rr){
@@ -197,7 +153,8 @@ void win_RR(uint32_t rr){
     }
 }
 
-void win_SREJ(uint32_t srej){
+void win_SREJ(uint32_t srej)
+{
     uint8_t *pdu = win_get(srej);
     uint32_t index = win_index(srej);
     uint32_t seq_num = getSeqPDU(pdu);
@@ -206,22 +163,51 @@ void win_SREJ(uint32_t srej){
     printf("Pdu from window: Seq Num: %d pduSize: %d\n", seq_num, pdu_size);
 }
 
-/*
-uint8_t * win_deQueue(){
+/* Returns the current sequenceNumber, so it can be compared with the expected
+ * in order to send SREJs
+ */
+int32_t win_add(uint8_t * pdu, uint16_t pduSize)
+{
+    uint32_t seq_num = getSeqPDU(pdu);
 
-    int temp;
-
-    if(win_isEmpty()){
-        printf("Window is empty\n");
-        return NULL;
+    if (seq_num < win.lower){
+        printf("Sequence is lower that window range\n");
+        return TOO_LOW;
+    } else if (seq_num >= win.upper){
+        win.current = win.upper;
+        printf("Sequence is higher that window range\n");
+        return TOO_HIGH;
+    } else if (!win_cellEmpty(seq_num)){
+        printf("Cell already filled\n");
+        return FULL_CELL;
     }
 
-    if(win_oneElement()){
-        win.lower = win.current;
-
+    if((int)seq_num >= win.current){
+        win.current = seq_num;
     }
 
-    return NULL;
+    memcpy(win.buffers[win_index(seq_num)], pdu, pduSize);
+    win.pdu_sizes[win_index(seq_num)] = pduSize;
+
+    return win.current;
 }
 
-*/
+/* Only pops off when the bottom cell is full */
+uint8_t win_deQueue(uint8_t * buf)
+{
+    if(!win_lowest_cell_isFull()){
+        printf("Next cell is empty\n");
+        return 0;
+    }
+
+    /* get info from cell */
+    uint8_t *pdu = win_get(win.lower);
+    uint8_t pduSize = win.pdu_sizes[win_index(win.lower)];
+
+    /* Assume buf size has not changed since initialization */
+    memcpy(buf, pdu, pduSize);
+    win_RR(win.lower + 1);
+
+    return pduSize;
+}
+

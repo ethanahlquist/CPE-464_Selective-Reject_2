@@ -112,21 +112,18 @@ int processSelect(Connection* client,  int* retryCount,
         returnValue=doneState;
     } else {
         if(pollCall(SHORT_TIME) == TIMEOUT) {
-            // no data ready
-            printf("TIMEOUT\n");
             returnValue=selectTimeoutState;
         } else {
-            printf("DATA_READY_STATE\n");
             *retryCount=0;
             returnValue=dataReadyState;
         }
-        //if(select_call(client->sk_num, SHORT_TIME, 0)==1) {
-        //    *retryCount=0;
-        //    returnValue=dataReadyState;
-        //} else {
-        //    // no data ready
-        //    returnValue=selectTimeoutState;
-        //}
     }
     return returnValue;
 }
+
+uint32_t getSeqPDU(uint8_t * data_buf)
+{
+    Header*aHeader=(Header*)data_buf;
+    return ntohl(aHeader->seq_num);
+}
+

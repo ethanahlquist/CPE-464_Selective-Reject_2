@@ -17,6 +17,7 @@
 #include "networks.h"
 #include "srej.h"
 #include "pollLib.h"
+#include "window.h"
 
 #include "cpe464.h"
 
@@ -46,6 +47,68 @@ int main(int argc, char * argv[] )
     return 0;
 }
 
+STATE new_recv_data(int32_t output_file, Connection * server, uint32_t * clientSeqNum){
+    uint32_t seq_num = 0;
+    uint8_t flag = 0;
+    int32_t data_len = 0;
+    uint8_t data_buf[MAX_LEN];
+    uint8_t packet[MAX_LEN];
+    static int32_t expected_seq_num = START_SEQ_NUM;
+
+    if(pollCall(LONG_TIME) == TIMEOUT){
+        printf("Timeout after 10 seconds,  server must be gone.\n");
+        return DONE;
+    }
+
+    data_len = recv_buf(data_buf, MAX_LEN, server->sk_num, server, &flag, &seq_num);
+
+    /*  do state RECV_DATA again if there is a crc error (don't send ack,  don't write data)  */
+    if(data_len == CRC_ERROR){
+        return RECV_DATA;
+    }
+
+    if(flag == END_OF_FILE)
+    {
+        /*  send ACK  */
+        send_buf(packet, 1, server, EOF_ACK, *clientSeqNum, packet);
+        (*clientSeqNum)++;
+        printf("File done\n");
+        return DONE;
+    }
+
+    /* Send RR of lowest if seq_num is too small */
+    if(seq_num < expected_seq_num){
+        uint32_t rrSeqNum = htonl(win_getLower());
+        send_buf((uint8_t *)&rrSeqNum, sizeof(rrSeqNum), server, RR, *clientSeqNum, packet);
+        (*clientSeqNum)++;
+        return RECV_DATA;
+    }
+
+    int32_t current_seq_num = win_add(data_buf, data_len);
+
+    /* Send a SREJ for every packet skipped */
+    int i;
+    for (i = expected_seq_num; i < current_seq_num; ++i) {
+        uint32_t srejSeqNum = htonl(win_getLower());
+        send_buf((uint8_t *)&srejSeqNum, sizeof(srejSeqNum), server, SREJ, *clientSeqNum, packet);
+        (*clientSeqNum)++;
+    }
+
+    expected_seq_num = current_seq_num;
+
+    uint32_t pdu_len;
+    uint8_t * dummy_flag = NULL;
+    uint32_t * dummy_seq_num = NULL;
+    while((pdu_len = win_deQueue(data_buf)) != 0) {
+        data_len = retrieveHeader(data_buf, pdu_len, dummy_flag, dummy_seq_num);
+        memcpy(data_buf, &data_buf[sizeof(Header)], data_len);
+        write(output_file, &data_buf, data_len);
+    }
+
+    return RECV_DATA;
+}
+
+
 void processFile(char * argv[])
 {
     // argv needed to get file names,  server name and server port number
@@ -70,7 +133,7 @@ void processFile(char * argv[])
                 break;
 
             case RECV_DATA:
-                state = recv_data(output_file_fd, server, &clientSeqNum);
+                state = new_recv_data(output_file_fd, server, &clientSeqNum);
                 break;
 
             case DONE:
