@@ -106,7 +106,10 @@ STATE new_send_data(Connection * client, uint8_t * packet, int32_t * packet_len,
     int32_t  len_read = 0;
     STATE returnValue = DONE;
 
+    win_metadata();
+
     if(win_isFull()){
+        printf("We have a full WINDOW\n");
         returnValue = WAIT_ON_RESPONSE;
         return returnValue;
     }
@@ -120,13 +123,15 @@ STATE new_send_data(Connection * client, uint8_t * packet, int32_t * packet_len,
         break;
 
     case 0:
-        (* packet_len) = send_buf(buf, 1, client, END_OF_FILE,  * seq_num, packet);
+        (* packet_len) = send_buf(buf, 1, client, END_OF_FILE, * seq_num, packet);
         returnValue = WAIT_ON_EOF_ACK;
         break;
 
     default:
-        (* packet_len) = send_buf(buf, len_read, client, DATA,  * seq_num, packet);
+        (* packet_len) = send_buf(buf, len_read, client, DATA, * seq_num, packet);
         (* seq_num)++;
+        win_add(packet, *packet_len);
+
         returnValue = CHECK_FOR_RESPONSE;
         break;
     }
@@ -134,23 +139,26 @@ STATE new_send_data(Connection * client, uint8_t * packet, int32_t * packet_len,
     return returnValue;
 }
 
-/* Helper function parsing flags for next state */
-STATE next_state_from_response(uint8_t flag, uint32_t crc_check, STATE crc_state, char * func_name)
+/* Set window to the new window size */
+STATE process_rr(Connection * client, uint8_t * buf)
 {
-    STATE returnValue = NEW_SEND_DATA;
+    uint32_t rr_seq_num = ntohl(*(uint32_t*)buf);
+    printf("RR VALUE: %d\n", rr_seq_num);
+    win_RR(rr_seq_num);
+    return NEW_SEND_DATA;
+}
 
-    // if crc error ignore packet
-    if(crc_check == CRC_ERROR) {
-        returnValue = crc_state;
-    } else if(flag == RR) {
-        returnValue = PROCESS_RR;
-    } else if(flag == SREJ) {
-        returnValue = PROCESS_SREJ;
-    } else  {
-        printf("In %s but its not an SREJ or RR flag (this should never happen) is: %d\n",func_name, flag);
-        returnValue = DONE;
-    }
-    return returnValue;
+
+STATE process_srej(Connection * client, uint8_t * buf)
+{
+    uint32_t srej_seq_num = ntohl(*(uint32_t*)buf);
+
+    /* Send packet with requested sequence number */
+    uint8_t *pdu = win_get(srej_seq_num);
+    uint8_t pduSize = win_getSize(srej_seq_num);
+
+    safeSendto(pdu, pduSize, client);
+    return NEW_SEND_DATA;
 }
 
 /* Check for a response packet without blocking */
@@ -164,7 +172,18 @@ STATE check_for_response(Connection * client){
 
     if(pollCall(0) != TIMEOUT){
         crc_check = recv_buf(buf, len, client->sk_num, client, &flag, &seq_num);
-        returnValue = next_state_from_response(flag, crc_check, NEW_SEND_DATA, "check_for_response");
+        if(crc_check == CRC_ERROR) {
+            returnValue = NEW_SEND_DATA;
+        } else if(flag == RR) {
+            process_rr(client, buf);
+            returnValue = NEW_SEND_DATA;
+        } else if(flag == SREJ) {
+            process_srej(client, buf);
+            returnValue = NEW_SEND_DATA;
+        } else  {
+            printf("In %s but its not an SREJ or RR flag (this should never happen) is: %d\n", "check_for_response", flag);
+            returnValue = DONE;
+        }
     }
     return returnValue;
 }
@@ -180,11 +199,22 @@ STATE wait_on_response(Connection * client)
     uint32_t  seq_num = 0;
     static int retryCount = 0;
 
-    if((returnValue = processSelect(client, &retryCount, TIMEOUT_ON_ACK, SEND_DATA, DONE))  == SEND_DATA)
+    if((returnValue = processSelect(client, &retryCount, TIMEOUT_ON_RESONSE, NEW_SEND_DATA, DONE))  == NEW_SEND_DATA)
     {
         crc_check = recv_buf(buf, len, client->sk_num, client, &flag, &seq_num);
         /* Run processSelect again, if invalid packet */
-        returnValue = next_state_from_response(flag, crc_check, WAIT_ON_RESPONSE, "wait_on_response");
+        if(crc_check == CRC_ERROR) {
+            returnValue = WAIT_ON_RESPONSE;
+        } else if(flag == RR) {
+            process_rr(client, buf);
+            returnValue = NEW_SEND_DATA;
+        } else if(flag == SREJ) {
+            process_srej(client, buf);
+            returnValue = NEW_SEND_DATA;
+        } else  {
+            printf("In %s but its not an SREJ or RR flag (this should never happen) is: %d\n", "wait_on_response", flag);
+            returnValue = DONE;
+        }
     }
     return returnValue;
 }
@@ -194,20 +224,6 @@ STATE timeout_on_response(Connection * client, uint8_t * packet, int32_t packet_
 {
     safeSendto(packet, packet_len, client);
     return WAIT_ON_RESPONSE;
-}
-
-/* Set window to the new window size */
-STATE process_rr(Connection * client, uint8_t * packet, int32_t * packet_len, int buf_size, uint32_t * seq_num)
-{
-    // window.RR() //
-    return NEW_SEND_DATA;
-}
-
-STATE process_srej(Connection * client, uint8_t * packet, int32_t packet_len)
-{
-    /* Send packet with requested sequence number */
-    safeSendto(packet, packet_len, client);
-    return NEW_SEND_DATA;
 }
 
 /*
@@ -259,15 +275,18 @@ void process_client(int32_t serverSocketNumber, uint8_t * buf, int32_t recv_len,
 
         switch(state) {
         case START:
+            printf("[START]:\n");
             state = FILENAME;
             break;
 
         case FILENAME:
+            printf("[FILENAME]:\n");
             state = filename(client, buf, recv_len, &data_file, &buf_size);
             break;
 
-        case SEND_DATA:
-            state = send_data(client, packet, &packet_len, data_file, buf_size, &seq_num);
+        case NEW_SEND_DATA:
+            printf("[SEND_DATA]:\n");
+            state = new_send_data(client, packet, &packet_len, data_file, buf_size, &seq_num);
             break;
 
         case WAIT_ON_ACK:
@@ -280,38 +299,36 @@ void process_client(int32_t serverSocketNumber, uint8_t * buf, int32_t recv_len,
 
 
         /* ETHAN'S */
-        case NEW_SEND_DATA:
+        case SEND_DATA:
+            printf("[SEND_DATA]:\n");
             state = new_send_data(client, packet, &packet_len, data_file, buf_size, &seq_num);
             break;
 
         case CHECK_FOR_RESPONSE:
+            printf("[CHECK_FOR_RESPONSE]:\n");
             state = check_for_response(client);
             break;
 
         case WAIT_ON_RESPONSE:
+            printf("[WAIT_ON_RESPONSE]:\n");
             state = wait_on_response(client);
             break;
 
         case TIMEOUT_ON_RESONSE:
+            printf("[TIMEOUT_ON_RESPONSE]:\n");
             /* Send Lowest packet, to break stall. return WAIT_ON_RESPONSE */
             state = timeout_on_response(client, packet, packet_len);
-            break;
-
-        case PROCESS_RR:
-            state = process_rr(client, packet, packet_len);
-            break;
-
-        case PROCESS_SREJ:
-            state = process_srej(client, packet, packet_len);
             break;
         /* ETHAN'S */
 
 
         case WAIT_ON_EOF_ACK:
+            printf("[WAIT_ON_EOF_ACK]:\n");
             state = wait_on_eof_ack(client);
             break;
 
         case TIMEOUT_ON_EOF_ACK:
+            printf("[TIMEOUT_ON_EOF_ACK]:\n");
             state = timeout_on_eof_ack(client, packet, packet_len);
             break;
 
@@ -332,11 +349,20 @@ STATE filename(Connection * client, uint8_t * buf, int32_t recv_len, int32_t * d
     uint8_t response[1];
     char fname[MAX_LEN];
     STATE returnValue = DONE;
+    int32_t win_size = 0;
 
     // extract buffer sized used for sending data and also filename
-    memcpy(buf_size, buf, SIZE_OF_BUF_SIZE);
-    *buf_size = ntohl( * buf_size);
-    memcpy(fname, &buf[sizeof( * buf_size)], recv_len-SIZE_OF_BUF_SIZE);
+
+    memcpy(&win_size, buf, SIZE_OF_WIN_SIZE);
+    win_size = ntohl(win_size);
+    memcpy(buf_size, &buf[SIZE_OF_WIN_SIZE], SIZE_OF_BUF_SIZE);
+    *buf_size = ntohl(* buf_size);
+
+    memcpy(fname, &buf[SIZE_OF_WIN_SIZE + SIZE_OF_BUF_SIZE],
+            recv_len - SIZE_OF_WIN_SIZE - SIZE_OF_BUF_SIZE);
+    printf("filename: %s\n", fname);
+
+    win_init("Server Window", win_size , *buf_size);
 
     /*  Create client socket to allow for processing this particular client  */
     client->sk_num = safeGetUdpSocket();
@@ -395,7 +421,7 @@ STATE wait_on_ack(Connection * client)
     uint32_t  seq_num = 0;
     static int retryCount = 0;
 
-    if((returnValue = processSelect(client, &retryCount, TIMEOUT_ON_ACK, SEND_DATA, DONE))  == SEND_DATA)
+    if((returnValue = processSelect(client, &retryCount, TIMEOUT_ON_ACK, NEW_SEND_DATA, DONE))  == NEW_SEND_DATA)
     {
         crc_check = recv_buf(buf, len, client->sk_num, client, &flag, &seq_num);
 

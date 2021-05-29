@@ -121,9 +121,31 @@ int processSelect(Connection* client,  int* retryCount,
     return returnValue;
 }
 
+uint32_t pdu_print(uint8_t * data_buf, int data_len)
+{
+    int recv_len = sizeof(Header);
+    uint8_t flag = 0;
+    uint32_t seq_num = 0;
+
+    int i;
+    for (i = 0; i < data_len; ++i) {
+        printf("%x", data_buf[i]);
+    }
+    printf("\n");
+    //retrieveHeader(data_buf, recv_len, &flag, &seq_num);
+    //printf("recv_len: %d\n", recv_len);
+    //printf("flag: %d\n", flag);
+    //printf("seq Num: %d\n", seq_num);
+
+    return seq_num;
+    //uint32_t seq_num;
+    //memcpy(&seq_num, &data_buf[sizeof(Header)], sizeof(uint32_t));
+    //return ntohl(seq_num);
+}
+
 uint32_t getSeqPDU(uint8_t * data_buf)
 {
-    Header*aHeader=(Header*)data_buf;
+    Header* aHeader = (Header *)data_buf;
     return ntohl(aHeader->seq_num);
 }
 

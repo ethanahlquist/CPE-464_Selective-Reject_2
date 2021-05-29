@@ -73,8 +73,8 @@ void win_metadata(){
 void win_print_index(uint32_t index){
 
     uint8_t *pdu = win_get(index);
-    uint32_t seq_num = getSeqPDU(pdu);
     uint16_t pdu_size = win.pdu_sizes[index];
+    uint32_t seq_num = getSeqPDU(pdu);
 
     if(pdu_size == 0){
         printf("\t%d not valid\n", index);
@@ -108,6 +108,14 @@ uint8_t * win_get(uint32_t seq_num){
     uint32_t index = win_index(seq_num);
     return win.buffers[index];
 }
+
+/* Get pdu size from sequenceNumber */
+uint8_t win_getSize(uint32_t seq_num){
+
+    uint32_t index = win_index(seq_num);
+    return win.pdu_sizes[index];
+}
+
 
 void win_set_lower(uint32_t val){
     win.lower = val;
@@ -157,8 +165,9 @@ void win_SREJ(uint32_t srej)
 {
     uint8_t *pdu = win_get(srej);
     uint32_t index = win_index(srej);
-    uint32_t seq_num = getSeqPDU(pdu);
     uint16_t pdu_size = win.pdu_sizes[index];
+
+    uint32_t seq_num = getSeqPDU(pdu);
 
     printf("Pdu from window: Seq Num: %d pduSize: %d\n", seq_num, pdu_size);
 }
@@ -169,17 +178,25 @@ void win_SREJ(uint32_t srej)
 int32_t win_add(uint8_t * pdu, uint16_t pduSize)
 {
     uint32_t seq_num = getSeqPDU(pdu);
+    printf("seq_num: %d\n", seq_num);
 
     if (seq_num < win.lower){
         printf("Sequence is lower that window range\n");
         return TOO_LOW;
     } else if (seq_num >= win.upper){
-        win.current = win.upper;
+        win.current = win.upper-1;
         printf("Sequence is higher that window range\n");
         return TOO_HIGH;
     } else if (!win_cellEmpty(seq_num)){
         printf("Cell already filled\n");
         return FULL_CELL;
+    }
+
+    printf("current: %d\n", win.current);
+    printf("seq_num: %d\n", seq_num);
+    if(win.current == -1){
+        win.current = seq_num;
+        win_set_lower(seq_num);
     }
 
     if((int)seq_num >= win.current){
@@ -189,6 +206,7 @@ int32_t win_add(uint8_t * pdu, uint16_t pduSize)
     memcpy(win.buffers[win_index(seq_num)], pdu, pduSize);
     win.pdu_sizes[win_index(seq_num)] = pduSize;
 
+    win_metadata();
     return win.current;
 }
 

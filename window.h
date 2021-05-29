@@ -14,11 +14,15 @@
 
 #define MAX_NAME (16)
 
+void win_init(const char *name, int32_t window_size, uint16_t buffer_size);
+
+void win_metadata();
+
 void win_print_index(uint32_t index);
 void win_print();
 uint32_t win_index(uint32_t seq_num);
 uint8_t * win_get(uint32_t seq_num);
-int win_dist(uint32_t i1, uint32_t i2);
+uint8_t win_getSize(uint32_t seq_num);
 void win_set_lower(uint32_t val);
 uint32_t win_getLower();
 int win_isFull();

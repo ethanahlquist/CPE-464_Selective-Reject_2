@@ -40,6 +40,7 @@ int main(int argc, char * argv[] )
     check_args(argc, argv);
 
     sendtoErr_init(atof(argv[5]), DROP_ON, FLIP_ON, DEBUG_ON, RSEED_ON);
+    win_init("Client Window", atoi(argv[3]), atoi(argv[4]));
     setupPollSet();
 
     processFile(argv);
@@ -76,15 +77,32 @@ STATE new_recv_data(int32_t output_file, Connection * server, uint32_t * clientS
         return DONE;
     }
 
-    /* Send RR of lowest if seq_num is too small */
-    if(seq_num < expected_seq_num){
+    /* Remake packet from data */
+    int packet_len = 0;
+    memmove(&packet[sizeof(Header)], data_buf, data_len);
+    packet_len = createHeader(data_len, flag, seq_num, packet);
+
+    int32_t current_seq_num = win_add(packet, packet_len);
+    if(current_seq_num == TOO_LOW){
         uint32_t rrSeqNum = htonl(win_getLower());
+        win_metadata();
         send_buf((uint8_t *)&rrSeqNum, sizeof(rrSeqNum), server, RR, *clientSeqNum, packet);
         (*clientSeqNum)++;
         return RECV_DATA;
     }
 
-    int32_t current_seq_num = win_add(data_buf, data_len);
+    /* Send RR of lowest if seq_num is too small */
+    //printf("Expected: %d\n", expected_seq_num);
+    //if(seq_num < expected_seq_num){
+    //    uint32_t rrSeqNum = htonl(win_getLower());
+    //    win_metadata();
+    //    //printf("rrSeqNum: %d\n", rrSeqNum);
+    //    send_buf((uint8_t *)&rrSeqNum, sizeof(rrSeqNum), server, RR, *clientSeqNum, packet);
+    //    (*clientSeqNum)++;
+    //    return RECV_DATA;
+    //}
+
+    win_print();
 
     /* Send a SREJ for every packet skipped */
     int i;
@@ -96,13 +114,15 @@ STATE new_recv_data(int32_t output_file, Connection * server, uint32_t * clientS
 
     expected_seq_num = current_seq_num;
 
+    win_print();
+
     uint32_t pdu_len;
-    uint8_t * dummy_flag = NULL;
-    uint32_t * dummy_seq_num = NULL;
+    uint8_t dummy_flag;
+    uint32_t dummy_seq_num;
     while((pdu_len = win_deQueue(data_buf)) != 0) {
-        data_len = retrieveHeader(data_buf, pdu_len, dummy_flag, dummy_seq_num);
-        memcpy(data_buf, &data_buf[sizeof(Header)], data_len);
-        write(output_file, &data_buf, data_len);
+        Header *aHeader = (Header *)data_buf;
+        int data_len = pdu_len - sizeof(Header);
+        write(output_file, aHeader+1, data_len);
     }
 
     return RECV_DATA;
@@ -121,18 +141,22 @@ void processFile(char * argv[])
         switch(state)
         {
             case START_STATE:
+                printf("[START_STATE]:\n");
                 state = start_state(argv, server, &clientSeqNum);
                 break;
 
             case FILENAME:
+                printf("[FILENAME]:\n");
                 state = filename(argv[1], atoi(argv[4]), server);
                 break;
 
             case FILE_OK:
+                printf("[FILE_OK]:\n");
                 state = file_ok(&output_file_fd, argv[2]);
                 break;
 
             case RECV_DATA:
+                printf("[RECV_DATA]:\n");
                 state = new_recv_data(output_file_fd, server, &clientSeqNum);
                 break;
 
@@ -154,6 +178,7 @@ STATE start_state(char ** argv, Connection * server, uint32_t * clientSeqNum){
     int fileNameLen = strlen(argv[1]);
     STATE returnValue = FILENAME;
     uint32_t bufferSize = 0;
+    uint32_t windowSize = 0;
 
     // if we have connected to server before,  close it before reconnect
     if(server->sk_num>0){
@@ -165,11 +190,14 @@ STATE start_state(char ** argv, Connection * server, uint32_t * clientSeqNum){
         returnValue = DONE;
     } else {
         // put in buffer size (for sending data) and filename
+        windowSize = htonl(atoi(argv[3]));
         bufferSize = htonl(atoi(argv[4]));
-        memcpy(buf, &bufferSize, SIZE_OF_BUF_SIZE);
-        memcpy(&buf[SIZE_OF_BUF_SIZE], argv[1], fileNameLen);
+        memcpy(buf, &windowSize, SIZE_OF_WIN_SIZE);
+        memcpy(&buf[SIZE_OF_WIN_SIZE], &bufferSize, SIZE_OF_BUF_SIZE);
+        memcpy(&buf[SIZE_OF_WIN_SIZE + SIZE_OF_BUF_SIZE], argv[1], fileNameLen);
         printIPv6Info(&server->remote);
-        send_buf(buf, fileNameLen+SIZE_OF_BUF_SIZE, server, FNAME,  * clientSeqNum, packet);
+        send_buf(buf, fileNameLen + SIZE_OF_WIN_SIZE + SIZE_OF_BUF_SIZE,
+                server, FNAME,  * clientSeqNum, packet);
         addToPollSet(server->sk_num);
 
         (*clientSeqNum)++;

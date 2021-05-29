@@ -20,6 +20,7 @@
 
 
 #define MAX_LEN 1500
+#define SIZE_OF_WIN_SIZE 4
 #define SIZE_OF_BUF_SIZE 4
 #define START_SEQ_NUM  1
 #define MAX_TRIES 10
@@ -37,7 +38,7 @@ struct header
 uint32_t seq_num;
 uint16_t checksum;
 uint8_t flag;
-};
+} __attribute__((packed));
 
 //enum FLAG
 //{
