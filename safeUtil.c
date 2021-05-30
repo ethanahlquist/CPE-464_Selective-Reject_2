@@ -16,53 +16,6 @@
 #include "cpe464.h"
 #endif
 
-//int safeRecvfrom(int socketNum, void * buf, int len, int flags, struct sockaddr *srcAddr, int * addrLen)
-//{
-//	int returnValue = 0;
-//	if ((returnValue = recvfrom(socketNum, buf, (size_t) len, flags, srcAddr, (socklen_t *) addrLen)) < 0)
-//	{
-//		perror("recvfrom: ");
-//		exit(-1);
-//	}
-//
-//	return returnValue;
-//}
-//
-//int safeSendto(int socketNum, void * buf, int len, int flags, struct sockaddr *srcAddr, int addrLen)
-//{
-//	int returnValue = 0;
-//	if ((returnValue = sendto(socketNum, buf, (size_t) len, flags, srcAddr, (socklen_t) addrLen)) < 0)
-//	{
-//		perror("sendto: ");
-//		exit(-1);
-//	}
-//
-//	return returnValue;
-//}
-//
-//int safeRecv(int socketNum, void * buf, int len, int flags)
-//{
-//	int returnValue = 0;
-//	if ((returnValue = recv(socketNum, buf, (size_t) len, flags)) < 0)
-//	{
-//		perror("recv: ");
-//		exit(-1);
-//	}
-//
-//	return returnValue;
-//}
-//
-//int safeSend(int socketNum, void * buf, int len, int flags)
-//{
-//	int returnValue = 0;
-//	if ((returnValue = send(socketNum, buf, (size_t) len, flags)) < 0)
-//	{
-//		perror("send: ");
-//		exit(-1);
-//	}
-//
-//	return returnValue;
-//}
 
 void * srealloc(void *ptr, size_t size)
 {

@@ -1,11 +1,11 @@
-/*
+/* 
  * CPE464 Library - checksum
  *
- * Checksum declaration
+ * Checksum declaration 
  * shadows@whitefang.com
  *
  * Simple call in_cksum with a memory location and it will calculate
- * the checksum over the requested length. The results are turned in
+ * the checksum over the requested length. The results are turned in 
  * a 16-bit, unsigned short
  */
 
@@ -59,11 +59,11 @@ extern "C" {
 
     // Select
     #include <sys/select.h>
-
+	
 	int forkMod(void);
-
+	
 	int socketMod(int doman, int type, int protocol);
-
+	
     int bindMod(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 
     int selectMod(int nfds,
@@ -77,7 +77,7 @@ extern "C" {
      * To use the sendErr(...) function you must call sendErr_init(...) first.
      * sendErr_init(...) initializes fields that are used by sendErr(...).  You
      * should only call sendErr_init(...) once in each program.
-     *
+     * 
      * sendErr_init(...)
      *    error_rate  - between 0 and less than 1 (0 means no errors)
      *    drop_flag   - should packets be dropped (DROP_ON or DROP_OFF)
@@ -89,7 +89,7 @@ extern "C" {
      *    If you don't know what to set random_flag to, use RSEED_OFF for initial
      *    debugging.  Once your program works, try RSEED_ON.  This will make the
      *    drop/flip pattern random between program runs.
-     *
+     *    
      *    ex:
      *        sendErr_init(.1, DROP_ON, FLIP_OFF, DEBUG_ON, RSEED_ON);
      */
@@ -106,7 +106,7 @@ extern "C" {
 
     ssize_t sendtoErr(int s, void *msg, int len, unsigned int flags,
                         const struct sockaddr *to, int tolen);
-
+    
     ssize_t recvfromErr(int s, void *buf, size_t len, int flags,
                         struct sockaddr *from, socklen_t *fromlen);
 

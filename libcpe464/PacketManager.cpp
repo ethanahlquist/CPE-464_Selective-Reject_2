@@ -35,7 +35,9 @@ extern "C" {
 PacketManager::PacketManager() :
     m_ErrorRate(0.0f), m_MsgNo(0)
 {
-    srand48(time(NULL));
+    long seed = time(NULL);
+    MSG_PRINT("SEED# %lu ", seed);
+    srand48(seed);
 }
 // ============================================================================
 PacketManager::~PacketManager()
@@ -155,7 +157,7 @@ int PacketManager::processEvents(void** pBuf, size_t* pLen, uint32_t msgNo)
         hasChanged = true;
     }
 
- 
+
   // Decide (based on error rate) if we should produce an error
   float randNum = drand48();
   if ((m_ErrorCase_Chance.size() > 0) && (randNum <= m_ErrorRate))
@@ -205,12 +207,12 @@ ssize_t PacketManager::send_Err(int s, void *buf, size_t len, int flags)
     }
 
     ++m_MsgNo;
-    
+
     uint32_t seqNo = ntohl(*(uint32_t*)(buf));
     uint8_t packetFlags = ((char *) buf)[6];
-    MSG_PRINT("MSG# %3u SEQ# %3u LEN %4u FLAG %d ", m_MsgNo, seqNo, len, packetFlags); 
+    MSG_PRINT("MSG# %3u SEQ# %3u LEN %4u FLAG %d ", m_MsgNo, seqNo, len, packetFlags);
     printType(packetFlags, (char *)buf);
-	
+
     size_t lenTmp = len;
     unsigned char bufTmp[len];
     memcpy(bufTmp, buf, lenTmp);
@@ -240,9 +242,9 @@ ssize_t PacketManager::send_Err(int s, void *buf, size_t len, int flags)
     {
         nResult = len;
     }
-	
+
     MSG_PRINT("\n");
-    
+
     return nResult;
 }
 // ============================================================================
@@ -250,69 +252,69 @@ void PacketManager::printType(int flag, char * buf)
 {
 
 	uint32_t seqNumber = 0;
-	
+
 	switch (flag)
 	{
 		case 1:
 			MSG_PRINT(" -SETUP Init    ");
 		break;
-		
-		case 2: 
+
+		case 2:
 			MSG_PRINT(" -SETUP Response");
 		break;
-		
-		case 3: 
+
+		case 3:
 		 	memcpy(&seqNumber, buf, 4);
 			seqNumber = ntohl(seqNumber);
 			MSG_PRINT(" -Data #: %4u", seqNumber);
 		break;
-		  
-		case 4: 
+
+		case 4:
 			MSG_PRINT(" -UNUSED FLAG Value");
 		break;
-		  
-		case 5: 
+
+		case 5:
 		 	memcpy(&seqNumber, &(buf[7]), 4);
 			seqNumber = ntohl(seqNumber);
 			MSG_PRINT(" -RR #:   %4u", seqNumber);
 		break;
-		
-		case 6: 
+
+		case 6:
 			memcpy(&seqNumber, &(buf[7]), 4);
 			seqNumber = ntohl(seqNumber);
 			MSG_PRINT(" -SREJ #: %4u", seqNumber);
 		break;
-		
-		case 7: 
+
+		case 7:
 			MSG_PRINT(" -FNAME    ");
 		break;
 
 		case 8:
 			MSG_PRINT(" -FNAME response");
 		break;
-		
+
 		default:
 			MSG_PRINT(" -User defined ");
 		break;
-		
+
 	}
-	
+
 }
 // ============================================================================
 ssize_t PacketManager::recv_Mod(int s, void *buf, size_t len, int flags)
 {
     ssize_t ret = ::recv(s, buf, len, flags);
-    
+
     uint32_t seqNo = ntohl(*(uint32_t*)(buf));
     uint8_t packetFlags = ((char *) buf)[6];
     MSG_PRINT("RECV         SEQ# %3u LEN %4u FLAGS %d ", seqNo, ret, packetFlags);
 	printType(packetFlags, (char *) buf);
-	
+
 	if (in_cksum((unsigned short *) buf, ret) != 0)
 	{
 		MSG_PRINT("  - RECV Corrupted packet");
 	}
-	
+
 	MSG_PRINT("\n");
     return ret;
 }
@@ -333,7 +335,7 @@ ssize_t PacketManager::sendto_Err(int s, void *buf, size_t len, int flags,
         ERR_PRINT("len == 0: %u\n", len);
         exit(1);
     }
-    
+
     if (to == NULL)
     {
         ERR_PRINT("sockaddr pointer == NULL\n");
@@ -344,16 +346,16 @@ ssize_t PacketManager::sendto_Err(int s, void *buf, size_t len, int flags,
 
     uint32_t seqNo = ntohl(*(uint32_t*)(buf));
     uint8_t packetFlags = ((char *) buf)[6];
-    MSG_PRINT("SEND MSG# %3u SEQ# %3u LEN %4u FLAGS %d ", m_MsgNo, seqNo, len, packetFlags); 
- 	printType(packetFlags, (char *)buf);  
-	
+    MSG_PRINT("SEND MSG# %3u SEQ# %3u LEN %4u FLAGS %d ", m_MsgNo, seqNo, len, packetFlags);
+ 	printType(packetFlags, (char *)buf);
+
     size_t lenTmp = len;
     unsigned char bufTmp[len];
     memcpy(bufTmp, buf, lenTmp);
     void* pBuf = bufTmp;
 
     nResult = processEvents((void**)&pBuf, &lenTmp, m_MsgNo);
-    		
+
 
 	MSG_PRINT("\n");
     if (nResult < 0)
@@ -390,12 +392,12 @@ ssize_t PacketManager::recvfrom_Mod(int s, void *buf, size_t len, int flags,
     uint8_t packetFlags = ((char *) buf)[6];
     MSG_PRINT("RECV          SEQ# %3u LEN %4u FLAGS %d ", seqNo, ret, packetFlags);
 	printType(packetFlags, (char *) buf);
-		
+
 	if (in_cksum((unsigned short *) buf, ret) != 0)
 	{
 		MSG_PRINT(" - RECV Corrupted packet");
 	}
-	
+
 
 	MSG_PRINT("\n");
 

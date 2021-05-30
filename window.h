@@ -22,7 +22,7 @@ void win_print_index(uint32_t index);
 void win_print();
 uint32_t win_index(uint32_t seq_num);
 uint8_t * win_get(uint32_t seq_num);
-uint8_t win_getSize(uint32_t seq_num);
+uint16_t win_getSize(uint32_t seq_num);
 void win_set_lower(uint32_t val);
 uint32_t win_getLower();
 int win_isFull();
@@ -36,7 +36,7 @@ int32_t win_add(uint8_t *pdu, uint16_t pduSize);
 
 int win_oneElement();
 int win_isEmpty();
-uint8_t win_deQueue(uint8_t * buf);
+uint16_t win_deQueue(uint8_t * buf);
 void win_RR(uint32_t rr);
 void win_SREJ(uint32_t srej);
 #endif

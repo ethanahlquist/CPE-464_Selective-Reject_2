@@ -110,7 +110,7 @@ uint8_t * win_get(uint32_t seq_num){
 }
 
 /* Get pdu size from sequenceNumber */
-uint8_t win_getSize(uint32_t seq_num){
+uint16_t win_getSize(uint32_t seq_num){
 
     uint32_t index = win_index(seq_num);
     return win.pdu_sizes[index];
@@ -178,7 +178,6 @@ void win_SREJ(uint32_t srej)
 int32_t win_add(uint8_t * pdu, uint16_t pduSize)
 {
     uint32_t seq_num = getSeqPDU(pdu);
-    printf("seq_num: %d\n", seq_num);
 
     if (seq_num < win.lower){
         printf("Sequence is lower that window range\n");
@@ -192,8 +191,6 @@ int32_t win_add(uint8_t * pdu, uint16_t pduSize)
         return FULL_CELL;
     }
 
-    printf("current: %d\n", win.current);
-    printf("seq_num: %d\n", seq_num);
     if(win.current == -1){
         win.current = seq_num;
         win_set_lower(seq_num);
@@ -211,7 +208,7 @@ int32_t win_add(uint8_t * pdu, uint16_t pduSize)
 }
 
 /* Only pops off when the bottom cell is full */
-uint8_t win_deQueue(uint8_t * buf)
+uint16_t win_deQueue(uint8_t * buf)
 {
     if(!win_lowest_cell_isFull()){
         printf("Next cell is empty\n");
@@ -220,7 +217,7 @@ uint8_t win_deQueue(uint8_t * buf)
 
     /* get info from cell */
     uint8_t *pdu = win_get(win.lower);
-    uint8_t pduSize = win.pdu_sizes[win_index(win.lower)];
+    uint16_t pduSize = win.pdu_sizes[win_index(win.lower)];
 
     /* Assume buf size has not changed since initialization */
     memcpy(buf, pdu, pduSize);
